@@ -4,6 +4,14 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 
+// Provide a more complete mock for process
+window.process = {
+  env: {
+    NODE_ENV: 'development' // or 'production' based on your environment
+  },
+  nextTick: (callback) => setTimeout(callback, 0) // Simple implementation of nextTick
+};
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>

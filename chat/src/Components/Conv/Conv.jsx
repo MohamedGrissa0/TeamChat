@@ -7,6 +7,8 @@ import { format } from 'timeago.js';
 
 export default function Conv({ own = true }) {
   const [messages, setMessages] = useState([]);
+  const [isCalling, setIsCalling] = useState(false);
+  const [incomingCall, setIncomingCall] = useState(null); // To handle incoming calls
   const user = useSelector((state) => state.user);
 
   const currentChat = useSelector((state) => state.currentChat?.currentchat);
@@ -15,6 +17,7 @@ export default function Conv({ own = true }) {
   const [newMessage, setNewMessage] = useState("");
   const socket = useRef();
   const scrollRef = useRef();
+  
 
   useLayoutEffect(() => {
     if (scrollRef?.current) {
@@ -22,7 +25,7 @@ export default function Conv({ own = true }) {
     }
   }, [messages]);
 
-  // Connect to socket server and listen for incoming messages
+  // Connect to socket server and listen for incoming messages and calls
   useEffect(() => {
     socket.current = io("ws://localhost:9000");
 
@@ -32,6 +35,10 @@ export default function Conv({ own = true }) {
         text: data.text,
         createdAt: Date.now(),
       });
+    });
+
+    socket.current.on("callReceived", (data) => {
+      setIncomingCall(data); // Handle incoming call
     });
 
     return () => {
@@ -94,6 +101,33 @@ export default function Conv({ own = true }) {
     }
   };
 
+  // Handle voice call
+  const handleCall = () => {
+    const receiverId = currentChat?.membres?.find(member => member !== user._id);
+    socket.current.emit("callUser", {
+      senderId: user._id,
+      receiverId: receiverId,
+    });
+    setIsCalling(true);
+  };
+
+  // Accept incoming call
+  const handleAcceptCall = () => {
+    // Add your logic to handle the voice call connection (WebRTC setup)
+    toast.success(`Call accepted from ${incomingCall.senderId}`);
+    setIncomingCall(null); // Clear incoming call notification
+  };
+
+  // Decline incoming call
+  const handleDeclineCall = () => {
+    socket.current.emit("callDeclined", {
+      senderId: incomingCall.senderId,
+      receiverId: user._id,
+    });
+    setIncomingCall(null); // Clear incoming call notification
+    toast.info("Call declined");
+  };
+
   // Add user to socket on component mount
   useEffect(() => {
     if (user?._id) {
@@ -120,7 +154,7 @@ export default function Conv({ own = true }) {
               </div>
             </div>
             <div className='flex space-x-3'>
-              <button className='text-gray-400 hover:text-white'>
+              <button onClick={handleCall} className='text-gray-400 hover:text-white'>
                 <span className="material-symbols-outlined">call</span>
               </button>
               <button className='text-gray-400 hover:text-white'>
@@ -136,7 +170,7 @@ export default function Conv({ own = true }) {
           <div className='w-full h-[1px] bg-gray-700'></div>
 
           {/* Messages */}
-          <div className={` ${messages?.length > 6 ? "flex-grow overflow-y-scroll scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-300" : "flex-grow"} px-2 py-4 space-y-3`} style={{ maxHeight: '70vh' }}>
+          <div className={` ${messages?.length >= 6 ? "flex-grow overflow-y-scroll scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-300" : "flex-grow"} px-2 py-4 space-y-3`} style={{ maxHeight: '70vh' }}>
             {messages.map((m) => (
               <div className={`flex ${m.sender === user._id ? 'justify-end' : 'justify-start'}`} key={m._id}>
                 <div className='flex items-center space-x-3'>
@@ -147,11 +181,11 @@ export default function Conv({ own = true }) {
                     />
                   )}
                   <div className={`flex flex-col ${m.sender === user._id ? 'justify-end items-end' : 'items-start justify-start'}`}>
-                    <p className={`px-3 py-1 rounded-lg ${m.sender === user._id ? 'bg-blue-500 text-white' : 'bg-[#1D2D45] text-gray-300'}`}>
+                    <p className={`px-3  py-1 rounded-lg ${m.sender === user._id ? 'bg-blue-500 text-white' : 'bg-[#374151] text-gray-300'}`}>
                       {m.text}
                     </p>
-                    <p className={` text-xs ${m.sender === user._id ? 'items-end' : 'items-start justify-start'}`}>
-                    {format(m.createdAt)}
+                    <p className={` text-xs mt-1 ${m.sender === user._id ? 'items-end' : 'items-start justify-start'}`}>
+                      {format(m.createdAt)}
                     </p>
                   </div>
                 </div>
@@ -162,9 +196,12 @@ export default function Conv({ own = true }) {
 
           {/* Message input */}
           <div className='flex items-center mx-2 mt-2'>
+            <button className='space-x-2 flex items-center justify-center p-2 bg-blue-500 rounded-lg hover:bg-blue-600'>
+              <span className="material-symbols-outlined text-white">image</span>
+            </button>
             <input
               type='text'
-              className='flex-grow p-2 bg-gray-700 text-white rounded-lg focus:outline-none'
+              className='flex-grow p-2 bg-gray-700 ml-2 text-white rounded-lg focus:outline-none'
               placeholder='Type a message...'
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
@@ -175,8 +212,21 @@ export default function Conv({ own = true }) {
           </div>
         </div>
       ) : (
-        <div className='flex items-center justify-center h-full'>
-          <p className='text-3xl text-gray-400'>Choose a Conversation</p>
+        <div className='flex-grow flex items-center justify-center text-2xl'>
+          Select a chat to start messaging...
+        </div>
+      )}
+
+      {/* Incoming call modal */}
+      {incomingCall && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-70">
+          <div className="bg-gray-800 p-5 rounded-lg text-white">
+            <p className="mb-4 text-lg">Incoming call from {incomingCall.senderId}</p>
+            <div className="flex space-x-4">
+              <button onClick={handleAcceptCall} className="bg-green-500 px-4 py-2 rounded-lg hover:bg-green-600">Accept</button>
+              <button onClick={handleDeclineCall} className="bg-red-500 px-4 py-2 rounded-lg hover:bg-red-600">Decline</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

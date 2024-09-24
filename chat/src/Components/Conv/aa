@@ -6,24 +6,20 @@ import { io } from "socket.io-client";
 import { format } from 'timeago.js';
 
 export default function Conv({ own = true }) {
-  const [messages, setMessages] = useState([]); // UI-bound messages state
+  const [messages, setMessages] = useState([]);
   const user = useSelector((state) => state.user);
+
   const currentChat = useSelector((state) => state.currentChat?.currentchat);
   const currentFriend = useSelector((state) => state.currentChat?.currentfriend);
+  const [arrivalMessage, setArrivalMessage] = useState(null);
   const [newMessage, setNewMessage] = useState("");
   const socket = useRef();
   const scrollRef = useRef();
-  const messagesCache = useRef([]); // Cache for messages to avoid frequent re-renders
 
-  // Smooth scroll to the latest message
-  const scrollToBottom = () => {
+  useLayoutEffect(() => {
     if (scrollRef?.current) {
       scrollRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  };
-
-  useLayoutEffect(() => {
-    scrollToBottom();
   }, [messages]);
 
   // Connect to socket server and listen for incoming messages
@@ -31,21 +27,24 @@ export default function Conv({ own = true }) {
     socket.current = io("ws://localhost:9000");
 
     socket.current.on("getMessage", (data) => {
-      const arrivalMessage = {
+      setArrivalMessage({
         sender: data.senderId,
         text: data.text,
         createdAt: Date.now(),
-      };
-      if (currentChat?.membres?.includes(arrivalMessage.sender)) {
-        messagesCache.current = [...messagesCache.current, arrivalMessage]; // Update cache
-        setMessages([...messagesCache.current]); // Batch UI update
-      }
+      });
     });
 
     return () => {
       socket.current.disconnect(); // Cleanup socket connection
     };
-  }, [currentChat]);
+  }, []);
+
+  // Add incoming message to messages if the sender is part of the current chat
+  useEffect(() => {
+    if (arrivalMessage && currentChat?.membres?.includes(arrivalMessage.sender)) {
+      setMessages((prev) => [...prev, arrivalMessage]);
+    }
+  }, [arrivalMessage, currentChat]);
 
   // Fetch chat messages when current chat changes
   useEffect(() => {
@@ -53,8 +52,7 @@ export default function Conv({ own = true }) {
       if (!currentChat?._id) return;
       try {
         const res = await axios.get(`http://localhost:5000/api/msg/${currentChat._id}`);
-        messagesCache.current = res.data; // Cache messages
-        setMessages([...messagesCache.current]); // Update UI once
+        setMessages(res.data);
       } catch (err) {
         toast.error("Failed to fetch messages: " + err.message);
       }
@@ -62,12 +60,15 @@ export default function Conv({ own = true }) {
 
     if (currentChat) {
       getMessages();
+    } else {
+      setMessages([]); // Reset messages if no current chat
     }
   }, [currentChat]);
 
   // Handle sending a message
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     if (newMessage.trim() === "") return; // Prevent empty messages
 
     const message = {
@@ -86,9 +87,8 @@ export default function Conv({ own = true }) {
 
     try {
       const res = await axios.post(`http://localhost:5000/api/msg/`, message);
-      messagesCache.current = [...messagesCache.current, res.data]; // Update cache
-      setMessages([...messagesCache.current]); // Update UI
-      setNewMessage(""); // Clear input
+      setMessages((prevMessages) => [...prevMessages, res.data]);
+      setNewMessage("");
     } catch (err) {
       toast.error("Failed to send message: " + err.message);
     }
@@ -119,24 +119,24 @@ export default function Conv({ own = true }) {
                 <p className='text-sm text-gray-400'>Web Developer</p>
               </div>
             </div>
-            <div className='flex items-center space-x-2'>
-              <div className='w-8 h-8'>
-                <span className="material-symbols-outlined h-full w-full">
-                  call
-                </span>
-              </div>
-              <div className='w-8 h-8'>
-                <span className="material-symbols-outlined h-full w-full">
-                  info
-                </span>
-              </div>
-
-
+            <div className='flex space-x-3'>
+              <button className='text-gray-400 hover:text-white'>
+                <span className="material-symbols-outlined">call</span>
+              </button>
+              <button className='text-gray-400 hover:text-white'>
+                <span className="material-symbols-outlined">videocam</span>
+              </button>
+              <button className='text-gray-400 hover:text-white'>
+                <span className="material-symbols-outlined">info</span>
+              </button>
             </div>
           </div>
 
+          {/* Divider */}
+          <div className='w-full h-[1px] bg-gray-700'></div>
+
           {/* Messages */}
-          <div className={` ${messages?.length > 7 ? "flex-grow overflow-y-scroll scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-300" : "flex-grow"} px-2 py-4 space-y-3`} style={{ maxHeight: '70vh' }}>
+          <div className={` ${messages?.length > 6 ? "flex-grow overflow-y-scroll scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-300" : "flex-grow"} px-2 py-4 space-y-3`} style={{ maxHeight: '70vh' }}>
             {messages.map((m) => (
               <div className={`flex ${m.sender === user._id ? 'justify-end' : 'justify-start'}`} key={m._id}>
                 <div className='flex items-center space-x-3'>
@@ -146,12 +146,12 @@ export default function Conv({ own = true }) {
                       className='rounded-full h-8 w-8 object-cover' alt=''
                     />
                   )}
-                  <div className='flex flex-col space-y-1'>
-                    <p className={`px-4 py-2 rounded-lg ${m.sender === user._id ? 'bg-blue-500 text-white' : 'bg-[#1D2D45] text-gray-300'}`}>
+                  <div className={`flex flex-col ${m.sender === user._id ? 'justify-end items-end' : 'items-start justify-start'}`}>
+                    <p className={`px-3 py-1 rounded-lg ${m.sender === user._id ? 'bg-blue-500 text-white' : 'bg-[#1D2D45] text-gray-300'}`}>
                       {m.text}
                     </p>
-                    <p className='text-xs'>
-                      {format(m.createdAt)}
+                    <p className={` text-xs ${m.sender === user._id ? 'items-end' : 'items-start justify-start'}`}>
+                    {format(m.createdAt)}
                     </p>
                   </div>
                 </div>
@@ -162,18 +162,7 @@ export default function Conv({ own = true }) {
 
           {/* Message input */}
           <div className='flex items-center mx-2 mt-2'>
-            <div className='w-8 h-8 cursor-pointer' onClick={() => document.getElementById('fileInput').click()}>
-              <input type='file' id='fileInput' className='hidden' />
-              <span className="material-symbols-outlined h-full w-full">
-                image
-              </span>
-            </div>
-
-            <div className='w-8 h-8 cursor-pointer'>
-              <span className="material-symbols-outlined h-full w-full">
-                mic
-              </span>
-            </div>
+            
             <input
               type='text'
               className='flex-grow p-2 bg-gray-700 text-white rounded-lg focus:outline-none'

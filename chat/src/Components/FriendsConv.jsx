@@ -95,8 +95,8 @@ export default function FriendsConv() {
   };
 
   return (
-    <div className='pt-5 h-[7vh]'>
-      <div className={`flex-grow ${filteredFriends.length > 6 ? "overflow-y-scroll scrollbar-thin h-[72vh] scrollbar-thumb-[#374151] scrollbar-track-gray-300" : ""}`}>
+    <div className='pt-2 h-[7vh]'>
+      <div className={`flex-grow ${filteredFriends.length > 8 ? "overflow-y-scroll scrollbar-thin h-[72vh] scrollbar-thumb-[#374151] scrollbar-track-gray-300" : ""}`}>
         {filteredFriends.length > 0 ? (
           filteredFriends.map((f) => (
             <div key={f._id} onClick={() => handleConv(f)} className='cursor-pointer'>
