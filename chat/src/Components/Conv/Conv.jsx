@@ -1,0 +1,184 @@
+import axios from 'axios';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
+import { toast } from 'react-toastify';
+import { io } from "socket.io-client";
+import { format } from 'timeago.js';
+
+export default function Conv({ own = true }) {
+  const [messages, setMessages] = useState([]);
+  const user = useSelector((state) => state.user);
+
+  const currentChat = useSelector((state) => state.currentChat?.currentchat);
+  const currentFriend = useSelector((state) => state.currentChat?.currentfriend);
+  const [arrivalMessage, setArrivalMessage] = useState(null);
+  const [newMessage, setNewMessage] = useState("");
+  const socket = useRef();
+  const scrollRef = useRef();
+
+  useLayoutEffect(() => {
+    if (scrollRef?.current) {
+      scrollRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
+  // Connect to socket server and listen for incoming messages
+  useEffect(() => {
+    socket.current = io("ws://localhost:9000");
+
+    socket.current.on("getMessage", (data) => {
+      setArrivalMessage({
+        sender: data.senderId,
+        text: data.text,
+        createdAt: Date.now(),
+      });
+    });
+
+    return () => {
+      socket.current.disconnect(); // Cleanup socket connection
+    };
+  }, []);
+
+  // Add incoming message to messages if the sender is part of the current chat
+  useEffect(() => {
+    if (arrivalMessage && currentChat?.membres?.includes(arrivalMessage.sender)) {
+      setMessages((prev) => [...prev, arrivalMessage]);
+    }
+  }, [arrivalMessage, currentChat]);
+
+  // Fetch chat messages when current chat changes
+  useEffect(() => {
+    const getMessages = async () => {
+      if (!currentChat?._id) return;
+      try {
+        const res = await axios.get(`http://localhost:5000/api/msg/${currentChat._id}`);
+        setMessages(res.data);
+      } catch (err) {
+        toast.error("Failed to fetch messages: " + err.message);
+      }
+    };
+
+    if (currentChat) {
+      getMessages();
+    } else {
+      setMessages([]); // Reset messages if no current chat
+    }
+  }, [currentChat]);
+
+  // Handle sending a message
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (newMessage.trim() === "") return; // Prevent empty messages
+
+    const message = {
+      sender: user._id,
+      conversationId: currentChat._id,
+      text: newMessage,
+    };
+
+    const receiverId = currentChat?.membres?.find(member => member !== user._id);
+
+    socket.current.emit("SendMessage", {
+      senderId: user._id,
+      receiverId: receiverId,
+      text: newMessage,
+    });
+
+    try {
+      const res = await axios.post(`http://localhost:5000/api/msg/`, message);
+      setMessages((prevMessages) => [...prevMessages, res.data]);
+      setNewMessage("");
+    } catch (err) {
+      toast.error("Failed to send message: " + err.message);
+    }
+  };
+
+  // Add user to socket on component mount
+  useEffect(() => {
+    if (user?._id) {
+      socket.current.emit('addUser', user._id);
+    }
+  }, [user]);
+
+  return (
+    <div className='col-span-6 h-full flex flex-col text-white'>
+      {currentChat ? (
+        <div className='flex flex-col h-full'>
+          {/* Header */}
+          <div className='flex justify-between px-4 py-2 items-center'>
+            <div className='flex items-center space-x-3'>
+              <div className='w-10 h-10'>
+                <img
+                  src={currentFriend?.avatar ? `http://localhost:5000/api/${currentFriend?.avatar}` : 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRObNSnagThQVZ9Zk39zmDVLzkvCs0X4NALK1R7rj-W6EnbDBZjorQ03lfi6fhUT2Eg-iw&usqp=CAU'}
+                  className='rounded-full h-full w-full object-cover' alt=''
+                />
+              </div>
+              <div>
+                <p className='text-lg font-semibold'>{currentFriend?.username}</p>
+                <p className='text-sm text-gray-400'>Web Developer</p>
+              </div>
+            </div>
+            <div className='flex space-x-3'>
+              <button className='text-gray-400 hover:text-white'>
+                <span className="material-symbols-outlined">call</span>
+              </button>
+              <button className='text-gray-400 hover:text-white'>
+                <span className="material-symbols-outlined">videocam</span>
+              </button>
+              <button className='text-gray-400 hover:text-white'>
+                <span className="material-symbols-outlined">info</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className='w-full h-[1px] bg-gray-700'></div>
+
+          {/* Messages */}
+          <div className={` ${messages?.length > 6 ? "flex-grow overflow-y-scroll scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-300" : "flex-grow"} px-2 py-4 space-y-3`} style={{ maxHeight: '70vh' }}>
+            {messages.map((m) => (
+              <div className={`flex ${m.sender === user._id ? 'justify-end' : 'justify-start'}`} key={m._id}>
+                <div className='flex items-center space-x-3'>
+                  {m.sender !== user._id && (
+                    <img
+                      src={currentFriend?.avatar ? `http://localhost:5000/api/${currentFriend?.avatar}` : 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRObNSnagThQVZ9Zk39zmDVLzkvCs0X4NALK1R7rj-W6EnbDBZjorQ03lfi6fhUT2Eg-iw&usqp=CAU'}
+                      className='rounded-full h-8 w-8 object-cover' alt=''
+                    />
+                  )}
+                  <div className={`flex flex-col ${m.sender === user._id ? 'justify-end items-end' : 'items-start justify-start'}`}>
+                    <p className={`px-3 py-1 rounded-lg ${m.sender === user._id ? 'bg-blue-500 text-white' : 'bg-[#1D2D45] text-gray-300'}`}>
+                      {m.text}
+                    </p>
+                    <p className={` text-xs ${m.sender === user._id ? 'items-end' : 'items-start justify-start'}`}>
+                    {format(m.createdAt)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div ref={scrollRef}></div>
+          </div>
+
+          {/* Message input */}
+          <div className='flex items-center mx-2 mt-2'>
+            <input
+              type='text'
+              className='flex-grow p-2 bg-gray-700 text-white rounded-lg focus:outline-none'
+              placeholder='Type a message...'
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+            />
+            <button onClick={handleSubmit} className='ml-2 flex items-center justify-center p-2 bg-blue-500 rounded-lg hover:bg-blue-600'>
+              <span className="material-symbols-outlined text-white">send</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className='flex items-center justify-center h-full'>
+          <p className='text-3xl text-gray-400'>Choose a Conversation</p>
+        </div>
+      )}
+    </div>
+  );
+}
