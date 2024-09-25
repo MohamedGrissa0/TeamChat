@@ -111,7 +111,7 @@ export default function FriendsConv() {
                   </div>
                 </div>
                 <div className='flex flex-col'>
-                  <p>{f.username || "Unknown User"}</p>
+                <p>{ (f.username.length>20 ?  f.username?.substr(0, 25) + "..." : f.username) ||  "Unknown User"}</p>
                 </div>
               </div>
               <div className='h-[1px] bg-slate-500 w-full'></div>

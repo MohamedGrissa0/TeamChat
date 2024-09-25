@@ -4,6 +4,7 @@ const initialState = {
   user: JSON.parse(localStorage.getItem('user')) || null, // Load user from localStorage
   currentChat: null, // Initialize currentChat
   search: '',
+  newmessage :""
 };
 
 const reducer = (state = initialState, action) => {

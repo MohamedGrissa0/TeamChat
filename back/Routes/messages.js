@@ -1,23 +1,38 @@
 const router = require("express").Router();
 const Message = require("../Models/Message");
-
-
-router.post('/', async (req, res) => {
-    const { sender, text, conversationId } = req.body;
-
-    if (!sender || !text || !conversationId) {
-        return res.status(400).json({ message: "All fields (sender, text, conversationId) are required" });
-    }
-    const newMessage = new Message(req.body);
-    console.log(req.body);
-    try {
-        const savedMessage = await newMessage.save();
-        res.status(200).json(savedMessage);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Server Error" });
-    }
+const multer = require("multer")
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/'); // Specify the upload directory
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + '-' + file.originalname); // Create a unique filename
+  }
 });
+
+const upload = multer({ storage: storage });
+
+router.post('/', upload.single('image'), async (req, res) => {
+  console.log(req.body);
+
+  // Create an instance of the Message model
+  const newMessage = new Message({
+    sender: req.body.sender,
+    conversationId: req.body.conversationId,
+    text: req.body.text,
+    image: req.file ? req.file.filename : null // Store the image filename if exists
+  });
+
+  try {
+    const savedMessage = await newMessage.save(); // Now this will work since newMessage is a Mongoose document
+    res.status(200).json(savedMessage);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+module.exports = router;
 
 router.get('/last/:userId/:friendId', async (req, res) => {
     const { userId, friendId } = req.params;

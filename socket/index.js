@@ -29,6 +29,8 @@ const getUser = (userId) => {
   return users.find((user) => user.userId === userId);
 };
 
+console.log(users.length)
+
 io.on("connection", (socket) => {
   console.log("A user connected: ", socket.id);
 
@@ -39,17 +41,20 @@ io.on("connection", (socket) => {
   });
 
   // Send and get messages
-  socket.on("SendMessage", ({ senderId, receiverId, text }) => {
-    const user = getUser(receiverId);
-    if (user) {
+// Send and get messages
+socket.on("SendMessage", ({ senderId, receiverId, text, image }) => { // Add image to the parameters
+  const user = getUser(receiverId);
+  if (user) {
       io.to(user.socketId).emit("getMessage", {
-        senderId,
-        text,
+          senderId,
+          text,
+          image, // Include the image in the emitted message
       });
-    } else {
+  } else {
       console.log(`User with ID ${receiverId} not found!`);
-    }
-  });
+  }
+});
+
 
   // Handle calling user
   socket.on("callUser", ({ userToCall, signalData, from, name }) => {
